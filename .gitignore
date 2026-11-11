@@ -1,0 +1,20 @@
+# Variáveis de ambiente (contêm credenciais — nunca versionar)
+.env
+.env.*
+**/.env
+**/.env.*
+# Exceção: o template de exemplo é seguro e documentado no README
+!.env.example
+!**/.env.example
+
+# Dependências e build
+node_modules/
+dist/
+
+# Projeto legado usado como base de referência
+legados/
+*.zip
+
+# Diversos
+.DS_Store
+*.log

@@ -1,0 +1,15 @@
+RewriteEngine On
+
+# O Apache (mod_php) não repassa o header Authorization ao PHP — ele é
+# consumido pelo próprio servidor antes de chegar ao handler. A linha abaixo
+# o publica como variável HTTP_AUTHORIZATION, visível em $_SERVER (necessário
+# para o Bearer JWT do AuthMiddleware).
+RewriteCond %{HTTP:Authorization} .
+RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+# Arquivos e diretórios existentes (ex.: capas em arquivos/) são servidos direto
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+
+# Todo o resto é tratado pelo front controller da API
+RewriteRule ^ index.php [QSA,L]

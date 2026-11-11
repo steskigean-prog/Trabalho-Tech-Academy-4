@@ -1,0 +1,98 @@
+# ==============================================================================
+# iMDB Admin — Orquestração dos serviços
+#
+# Serviços:
+#   db       (MySQL 8.4)         — persistência do catálogo (rede interna)
+#   backend  (PHP 8.3/Apache)    — API REST com JWT
+#   frontend (Nginx + build Vite)— SPA React/TypeScript
+#   nginx    (proxy reverso)    — ÚNICA porta exposta ao hospedeiro
+#
+# Redes:
+#   rede-frontend: nginx + frontend + backend
+#   rede-backend:  backend + db (o banco nunca é alcançado diretamente)
+#
+# Todas as credenciais vêm do arquivo .env na raiz (ver .env.example).
+# ==============================================================================
+
+name: imdb-admin
+
+services:
+  # ---------------------------------------------------------------- Banco ----
+  db:
+    image: mysql:8.4
+    container_name: imdb-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    volumes:
+      # Persistência dos dados entre reinicializações
+      - dados-mysql:/var/lib/mysql
+      # Estrutura + seeds executados apenas na primeira inicialização
+      - ./database/imdb.sql:/docker-entrypoint-initdb.d/01-imdb.sql:ro
+    healthcheck:
+      # $$ escapa a interpolação do compose: a senha vem do ambiente do container
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+    networks:
+      - rede-backend
+    # Sem "ports": o banco fica isolado na rede interna
+
+  # -------------------------------------------------------------- Backend ----
+  backend:
+    build: ./backend
+    container_name: imdb-backend
+    restart: unless-stopped
+    environment:
+      DB_HOST: db
+      DB_NAME: ${MYSQL_DATABASE}
+      DB_USER: ${MYSQL_USER}
+      DB_PASS: ${MYSQL_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRACAO: ${JWT_EXPIRACAO}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - rede-backend
+      - rede-frontend
+
+  # ------------------------------------------------------------- Frontend ----
+  frontend:
+    build: ./frontend
+    container_name: imdb-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    networks:
+      - rede-frontend
+
+  # --------------------------------------------------------- Proxy reverso --
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: imdb-nginx
+    restart: unless-stopped
+    ports:
+      # Única porta publicada no hospedeiro (ajustável via .env)
+      - "${PORTA_NGINX:-8080}:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - rede-frontend
+
+networks:
+  rede-frontend:
+    name: imdb-rede-frontend
+  rede-backend:
+    name: imdb-rede-backend
+
+volumes:
+  dados-mysql:
+    name: imdb-dados-mysql
